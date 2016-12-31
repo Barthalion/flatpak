@@ -1385,11 +1385,10 @@ builder_module_build (BuilderModule  *self,
   if (has_configure)
     {
       const char *configure_cmd;
-      const char *configure_final_arg = skip_arg;
       const char *cmake_generator = NULL;
-      g_autofree char *configure_prefix_arg = NULL;
+      g_autoptr(GString) configure_final_arg = NULL;
       g_autofree char *configure_content = NULL;
-      g_autofree char *configure_additional_arg = NULL;
+      g_autoptr(GPtrArray) configure_args = g_ptr_array_new ();
 
       if (!g_file_load_contents (configure_file, NULL, &configure_content, NULL, NULL, error))
         {
@@ -1417,12 +1416,12 @@ builder_module_build (BuilderModule  *self,
           if (cmake || cmake_ninja)
             {
               configure_cmd = "cmake";
-              configure_final_arg = "..";
+              configure_final_arg = g_string_new("..");
             }
           else if (meson)
             {
               configure_cmd = "meson";
-              configure_final_arg = "..";
+              configure_final_arg = g_string_new("..");
             }
           else
             {
@@ -1436,7 +1435,7 @@ builder_module_build (BuilderModule  *self,
           if (cmake || cmake_ninja)
             {
               configure_cmd = "cmake";
-              configure_final_arg = ".";
+              configure_final_arg = g_string_new(".");
             }
           else if (meson)
             {
@@ -1457,19 +1456,21 @@ builder_module_build (BuilderModule  *self,
 
       if (cmake || cmake_ninja)
         {
-          configure_prefix_arg = g_strdup_printf ("-DCMAKE_INSTALL_PREFIX:PATH='%s'",
-                                                  builder_options_get_prefix (self->build_options, context));
-          configure_additional_arg = g_strdup_printf ("-G'%s'", cmake_generator);
+          g_ptr_array_add (configure_args, g_strdup_printf ("-DCMAKE_INSTALL_PREFIX:PATH='%s'",
+                                                             builder_options_get_prefix (self->build_options, context)));
+          g_ptr_array_add (configure_args, g_string_new ("-G"));
+          g_ptr_array_add (configure_args, g_strdup_printf ("'%s'", cmake_generator));
         }
       else /* autotools and meson */
         {
-          configure_prefix_arg = g_strdup_printf ("--prefix=%s",
-                                                  builder_options_get_prefix (self->build_options, context));
-          configure_additional_arg = "\0";
+          g_ptr_array_add (configure_args, g_strdup_printf ("--prefix=%s",
+                                                            builder_options_get_prefix (self->build_options, context)));
         }
 
+      g_ptr_array_add (configure_args, configure_final_arg);
+
       if (!build (app_dir, self->name, context, source_dir, build_dir_relative, build_args, env, error,
-                  configure_cmd, configure_prefix_arg, strv_arg, config_opts, configure_additional_arg, configure_final_arg, NULL))
+                  configure_cmd, strv_arg, configure_args, strv_arg, config_opts, NULL))
         return FALSE;
     }
   else
